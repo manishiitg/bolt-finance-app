@@ -90,26 +90,46 @@ export function StatementUploader() {
       return
     }
 
+    if (!isRandom && (!file || file.type !== 'text/csv')) {
+      toast.error('Please select a valid CSV file')
+      return
+    }
+
     try {
       setUploading(true)
+      setUploadProgress(10) // Show initial progress
       
       const formData = new FormData()
       if (!isRandom && file) {
         formData.append('file', file)
+        
+        // Log file details for debugging
+        console.log('Uploading file:', {
+          name: file.name,
+          type: file.type,
+          size: file.size
+        })
       }
       formData.append('accountId', selectedAccount)
       formData.append('isRandom', isRandom.toString())
+
+      setUploadProgress(30)
 
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
 
+      setUploadProgress(60)
+
       if (!response.ok) {
-        throw new Error('Upload failed')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Upload failed')
       }
 
       const result = await response.json()
+      setUploadProgress(90)
+
       toast.success(
         isRandom 
           ? `Successfully generated ${result.transactionCount} transactions`
@@ -121,16 +141,15 @@ export function StatementUploader() {
       if (!isRandom) {
         setFile(null)
       }
+      setUploadProgress(100)
     } catch (error) {
       console.error('Upload error:', error)
       toast.error(
-        isRandom 
-          ? 'Failed to generate transactions'
-          : 'Failed to upload file'
+        `Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`
       )
     } finally {
       setUploading(false)
-      setUploadProgress(0)
+      setTimeout(() => setUploadProgress(0), 500)
     }
   }
 
@@ -234,10 +253,9 @@ export function StatementUploader() {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Make sure your CSV file follows the required format. 
-                <Button variant="link" className="h-auto p-0 pl-1">
-                  View format guide
-                </Button>
+                CSV file should have these columns: date (YYYY-MM-DD), description (text), amount (number).
+                <br />
+                Example: 2024-03-20,Grocery Shopping,-50.00
               </AlertDescription>
             </Alert>
 
