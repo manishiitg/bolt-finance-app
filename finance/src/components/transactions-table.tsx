@@ -387,6 +387,7 @@ export function TransactionsTable() {
                   )}
                 </TableBody>
               </Table>
+              {/* TODO: Add pagination */}
             </div>
           </div>
         </CardContent>
