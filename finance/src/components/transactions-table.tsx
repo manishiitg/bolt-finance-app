@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useState, useEffect } from "react"
-import { Account, Transaction, TransactionCategory } from "@/types/finance"
+import { Account, Transaction, TransactionCategory, Tag } from "@/types/finance"
 import { format, startOfMonth, endOfMonth, isWithinInterval } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChevronDown, ChevronUp } from "lucide-react"
@@ -45,6 +45,25 @@ import { Button } from "./ui/button"
 
 const CATEGORIES: TransactionCategory[] = ['Income', 'Expense', 'Asset', 'Liability']
 
+const CUSTOM_TAGS = [
+  'Groceries',
+  'Rent',
+  'Repayments',
+  'Dining Out',
+  'Healthcare',
+  'Education',
+  'Entertainment',
+  'Shopping',
+  'Travel',
+  'Charity'
+];
+
+// Function to get a random color class
+const getRandomColorClass = () => {
+  const colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
 export function TransactionsTable() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -56,6 +75,8 @@ export function TransactionsTable() {
   const [newTag, setNewTag] = useState('')
   const [newComment, setNewComment] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null)
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
 
   useEffect(() => {
     async function fetchData() {
@@ -82,6 +103,15 @@ export function TransactionsTable() {
 
     fetchData()
   }, [])
+
+  useEffect(() => {
+    async function fetchTags() {
+      const response = await fetch('/api/tags');
+      const tags = await response.json();
+      setAvailableTags(tags);
+    }
+    fetchTags();
+  }, []);
 
   // Generate last 12 months for the filter
   const getMonthOptions = () => {
@@ -153,20 +183,23 @@ export function TransactionsTable() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tagName })
-      })
+      });
 
-      if (!response.ok) throw new Error('Failed to add tag')
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Error response:', errorData);
+        throw new Error('Failed to add tag');
+      }
 
-      const updatedTransaction = await response.json()
+      const updatedTransaction = await response.json();
       setTransactions(prev => 
         prev.map(t => t.id === transactionId ? updatedTransaction : t)
-      )
-      toast.success('Tag added')
-    } catch (error: unknown) {
-      console.error('Failed to add tag:', error)
-      toast.error('Failed to add tag')
+      );
+      toast.success('Tag added');
+    } catch (error) {
+      console.error('Failed to add tag:', error);
     }
-  }
+  };
 
   const handleUpdateComment = async (transactionId: string, comment: string) => {
     try {
@@ -331,28 +364,25 @@ export function TransactionsTable() {
                               <PopoverContent className="w-[200px] p-0">
                                 <Command>
                                   <CommandInput 
-                                    placeholder="Search or add tag..." 
-                                    onValueChange={setNewTag}
+                                    placeholder="Search tags..." 
+                                    onValueChange={(value) => setNewTag(value)}
                                   />
                                   <CommandEmpty>
-                                    <Button
-                                      variant="ghost"
-                                      className="w-full justify-start"
-                                      onClick={() => handleAddTag(transaction.id, newTag)}
-                                    >
-                                      <Plus className="mr-2 h-4 w-4" />
-                                      Create {newTag}
-                                    </Button>
+                                    No tags found.
                                   </CommandEmpty>
                                   <CommandGroup>
-                                    {/* tags.map(tag => (
-                                      <CommandItem
-                                        key={tag.id}
-                                        onSelect={() => handleAddTag(transaction.id, tag.name)}
+                                    {CUSTOM_TAGS.map(tag => (
+                                      <Button
+                                        key={tag}
+                                        variant="ghost"
+                                        className="w-full justify-start"
+                                        onClick={() => {
+                                          handleAddTag(transaction.id, tag);
+                                        }}
                                       >
-                                        {tag.name}
-                                      </CommandItem>
-                                    )) */}
+                                        {tag}
+                                      </Button>
+                                    ))}
                                   </CommandGroup>
                                 </Command>
                               </PopoverContent>
@@ -367,6 +397,7 @@ export function TransactionsTable() {
                                 onClick={() => {
                                   setNewComment(transaction.comment || '');
                                   setIsDialogOpen(true);
+                                  setCurrentTransaction(transaction);
                                 }}
                               >
                                 {transaction.comment}
@@ -375,6 +406,7 @@ export function TransactionsTable() {
                               <MessageSquare className="h-4 w-4 cursor-pointer" onClick={() => {
                                 setNewComment('');
                                 setIsDialogOpen(true);
+                                setCurrentTransaction(transaction);
                               }} />
                             )}
                           </div>
@@ -404,7 +436,9 @@ export function TransactionsTable() {
             onChange={(e) => setNewComment(e.target.value)}
           />
           <Button onClick={() => {
-            handleUpdateComment(transaction.id, newComment);
+            if (currentTransaction) {
+              handleUpdateComment(currentTransaction.id, newComment);
+            }
             setNewComment('');
             setIsDialogOpen(false);
           }}>
