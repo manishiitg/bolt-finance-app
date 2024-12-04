@@ -38,11 +38,12 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Tag as TagIcon, Plus } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
-import { Command, CommandInput, CommandEmpty, CommandGroup } from "@/components/ui/command"
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "./ui/button"
 
 const CATEGORIES: TransactionCategory[] = ['Income', 'Expense', 'Asset', 'Liability']
+const RANDOM_TAGS = ['Entertainment', 'Repayment', 'Education', 'Grocery', 'Charity', 'Shopping']; // List of random tags
 
 export function TransactionsTable() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -53,6 +54,8 @@ export function TransactionsTable() {
   const [isExpanded, setIsExpanded] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [newTag, setNewTag] = useState('')
+  const [showComment, setShowComment] = useState<{ [key: string]: string }>({})
+  const [selectedTags, setSelectedTags] = useState<{ [key: string]: string }>({}); // State to track selected tags for each transaction
 
   useEffect(() => {
     async function fetchData() {
@@ -145,25 +148,33 @@ export function TransactionsTable() {
   }
 
   const handleAddTag = async (transactionId: string, tagName: string) => {
+    if (!tagName) return; // Prevent adding empty tags
     try {
       const response = await fetch(`/api/transactions/${transactionId}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tagName })
-      })
+      });
 
-      if (!response.ok) throw new Error('Failed to add tag')
+      // Log the response for debugging
+      console.log('Response:', response);
 
-      const updatedTransaction = await response.json()
+      if (!response.ok) {
+        const errorData = await response.text(); // Get error details from response
+        console.error('Error response:', errorData); // Log the error response
+        throw new Error('Failed to add tag'); // Use a generic error message
+      }
+
+      const updatedTransaction = await response.json();
       setTransactions(prev => 
         prev.map(t => t.id === transactionId ? updatedTransaction : t)
-      )
-      toast.success('Tag added')
+      );
+      toast.success('Tag added');
     } catch (error: unknown) {
-      console.error('Failed to add tag:', error)
-      toast.error('Failed to add tag')
+      console.error('Failed to add tag:', error);
+      toast.error('Failed to add tag');
     }
-  }
+  };
 
   const handleUpdateComment = async (transactionId: string, comment: string) => {
     try {
@@ -179,6 +190,7 @@ export function TransactionsTable() {
       setTransactions(prev => 
         prev.map(t => t.id === transactionId ? updatedTransaction : t)
       )
+      setShowComment(prev => ({ ...prev, [transactionId]: comment }))
       toast.success('Comment updated')
     } catch (error: unknown) {
       console.error('Failed to update comment:', error)
@@ -322,7 +334,8 @@ export function TransactionsTable() {
                             <Popover>
                               <PopoverTrigger asChild>
                                 <Button variant="ghost" size="sm">
-                                  <TagIcon className="h-4 w-4" />
+                                  {selectedTags[transaction.id] || (transaction.tags?.length > 0 ? transaction.tags[0].name : <TagIcon className="h-4 w-4" />)} 
+                                  {/* Show the selected tag or the first tag, or the tag icon if none */}
                                 </Button>
                               </PopoverTrigger>
                               <PopoverContent className="w-[200px] p-0">
@@ -331,25 +344,18 @@ export function TransactionsTable() {
                                     placeholder="Search or add tag..." 
                                     onValueChange={setNewTag}
                                   />
-                                  <CommandEmpty>
-                                    <Button
-                                      variant="ghost"
-                                      className="w-full justify-start"
-                                      onClick={() => handleAddTag(transaction.id, newTag)}
-                                    >
-                                      <Plus className="mr-2 h-4 w-4" />
-                                      Create {newTag}
-                                    </Button>
-                                  </CommandEmpty>
                                   <CommandGroup>
-                                    {/* tags.map(tag => (
+                                    {RANDOM_TAGS.map(tag => (
                                       <CommandItem
-                                        key={tag.id}
-                                        onSelect={() => handleAddTag(transaction.id, tag.name)}
+                                        key={tag}
+                                        onSelect={() => {
+                                          handleAddTag(transaction.id, tag); // Add selected tag
+                                          setSelectedTags(prev => ({ ...prev, [transaction.id]: tag })); // Update the displayed tag for this transaction
+                                        }}
                                       >
-                                        {tag.name}
+                                        {tag}
                                       </CommandItem>
-                                    )) */}
+                                    ))}
                                   </CommandGroup>
                                 </Command>
                               </PopoverContent>
@@ -357,11 +363,18 @@ export function TransactionsTable() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Dialog>
+                          <Dialog open={!!showComment[transaction.id]} onOpenChange={(open) => {
+                            if (!open) {
+                              setShowComment(prev => ({ ...prev, [transaction.id]: '' })); // Reset comment when dialog closes
+                            }
+                          }}>
                             <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MessageSquare className="h-4 w-4" />
-                                {transaction.comment && <span className="ml-2">Edit</span>}
+                              <Button variant="ghost" size="sm" onClick={() => setShowComment(prev => ({ ...prev, [transaction.id]: transaction.comment || '' }))}>
+                                {transaction.comment ? (
+                                  <span>{transaction.comment}</span> // Show the comment text
+                                ) : (
+                                  <MessageSquare className="h-4 w-4" />
+                                )}
                               </Button>
                             </DialogTrigger>
                             <DialogContent>
@@ -369,10 +382,20 @@ export function TransactionsTable() {
                                 <DialogTitle>Add Comment</DialogTitle>
                               </DialogHeader>
                               <Textarea
-                                defaultValue={transaction.comment || ''}
+                                defaultValue={showComment[transaction.id] || ''}
                                 placeholder="Add a comment..."
-                                onBlur={(e) => handleUpdateComment(transaction.id, e.target.value)}
                               />
+                              <Button 
+                                variant="default" 
+                                onClick={async () => {
+                                  const commentText = showComment[transaction.id] || '';
+                                  await handleUpdateComment(transaction.id, commentText); // Wait for the comment to be updated
+                                  setShowComment(prev => ({ ...prev, [transaction.id]: commentText })); // Update the comment state
+                                  // Close the dialog
+                                }}
+                              >
+                                Submit Comment
+                              </Button>
                             </DialogContent>
                           </Dialog>
                         </TableCell>
