@@ -9,11 +9,14 @@ export async function PATCH(
 ) {
   try {
     const { id } = params
-    const { category } = await request.json()
+    const { category, comment } = await request.json()
 
     const transaction = await prisma.transaction.update({
       where: { id },
-      data: { category }
+      data: { 
+        category, 
+        comment
+      }
     })
 
     return NextResponse.json(transaction)

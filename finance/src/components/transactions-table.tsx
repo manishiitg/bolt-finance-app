@@ -11,6 +11,7 @@ import {
 import {
   Select,
   SelectContent,
+  
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -53,6 +54,8 @@ export function TransactionsTable() {
   const [isExpanded, setIsExpanded] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [newTag, setNewTag] = useState('')
+  const [newComment, setNewComment] = useState('')
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -357,24 +360,24 @@ export function TransactionsTable() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MessageSquare className="h-4 w-4" />
-                                {transaction.comment && <span className="ml-2">Edit</span>}
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Add Comment</DialogTitle>
-                              </DialogHeader>
-                              <Textarea
-                                defaultValue={transaction.comment || ''}
-                                placeholder="Add a comment..."
-                                onBlur={(e) => handleUpdateComment(transaction.id, e.target.value)}
-                              />
-                            </DialogContent>
-                          </Dialog>
+                          <div className="flex items-center">
+                            {transaction.comment ? (
+                              <span 
+                                className="text-gray-800 cursor-pointer underline" 
+                                onClick={() => {
+                                  setNewComment(transaction.comment || '');
+                                  setIsDialogOpen(true);
+                                }}
+                              >
+                                {transaction.comment}
+                              </span>
+                            ) : (
+                              <MessageSquare className="h-4 w-4 cursor-pointer" onClick={() => {
+                                setNewComment('');
+                                setIsDialogOpen(true);
+                              }} />
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className={`text-right ${
                           transaction.type === 'credit' ? 'text-green-600' : 'text-red-600'
@@ -391,6 +394,24 @@ export function TransactionsTable() {
           </div>
         </CardContent>
       )}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{newComment ? 'Edit Comment' : 'Add Comment'}</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+          />
+          <Button onClick={() => {
+            handleUpdateComment(transaction.id, newComment);
+            setNewComment('');
+            setIsDialogOpen(false);
+          }}>
+            {newComment ? 'Update Comment' : 'Add Comment'}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 } 
