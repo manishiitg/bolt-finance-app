@@ -16,4 +16,21 @@ export async function GET() {
       { status: 500 }
     )
   }
+}
+
+// Handle POST request to add a new tag
+export async function POST(request: Request) {
+  try {
+    const { name } = await request.json();
+    const newTag = await prisma.tag.create({
+      data: { name }
+    });
+    return NextResponse.json(newTag);
+  } catch (error) {
+    console.error('Failed to add tag:', error);
+    return NextResponse.json(
+      { error: 'Failed to add tag' },
+      { status: 500 }
+    );
+  }
 } 

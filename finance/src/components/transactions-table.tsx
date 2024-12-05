@@ -15,8 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useState, useEffect } from "react"
-import { Account, Transaction, TransactionCategory } from "@/types/finance"
+import { useState, useEffect, useMemo } from "react"
+import { Account, Transaction, TransactionCategory, Tag } from "@/types/finance"
 import { format, startOfMonth, endOfMonth, isWithinInterval } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChevronDown, ChevronUp } from "lucide-react"
@@ -45,6 +45,12 @@ import { Button } from "./ui/button"
 const CATEGORIES: TransactionCategory[] = ['Income', 'Expense', 'Asset', 'Liability']
 const RANDOM_TAGS = ['Entertainment', 'Repayment', 'Education', 'Grocery', 'Charity', 'Shopping']; // List of random tags
 
+// Function to generate a random color from a predefined set
+const getRandomColor = () => {
+  const colors = ["red", "green", "blue", "orange", "purple"];
+  return colors[Math.floor(Math.random() * colors.length)];
+};
+
 export function TransactionsTable() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -56,6 +62,9 @@ export function TransactionsTable() {
   const [newTag, setNewTag] = useState('')
   const [showComment, setShowComment] = useState<{ [key: string]: string }>({})
   const [selectedTags, setSelectedTags] = useState<{ [key: string]: string }>({}); // State to track selected tags for each transaction
+  const [showTagPopup, setShowTagPopup] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [existingTags, setExistingTags] = useState<string[]>([]); // Store existing tags
 
   useEffect(() => {
     async function fetchData() {
@@ -74,7 +83,7 @@ export function TransactionsTable() {
           setAccounts(accountsData)
         }
       } catch (error) {
-        console.error('Failed to fetch data:', error)
+        console.log('Failed to fetch data:', error)
       } finally {
         setLoading(false)
       }
@@ -82,6 +91,21 @@ export function TransactionsTable() {
 
     fetchData()
   }, [])
+
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        const response = await fetch("/api/tags");
+        if (!response.ok) throw new Error("Failed to fetch tags");
+        const tags: Tag[] = await response.json();
+        setExistingTags(tags.map((tag: Tag) => tag.name));
+      } catch (error) {
+        console.error("Error fetching tags:", error);
+      }
+    };
+
+    fetchTags();
+  }, []);
 
   // Generate last 12 months for the filter
   const getMonthOptions = () => {
@@ -148,31 +172,40 @@ export function TransactionsTable() {
   }
 
   const handleAddTag = async (transactionId: string, tagName: string) => {
-    if (!tagName) return; // Prevent adding empty tags
+    if (!tagName.trim()) return; // Prevent empty tags
+
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tagName })
+      const response = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: tagName }),
       });
 
-      // Log the response for debugging
-      console.log('Response:', response);
-
       if (!response.ok) {
-        const errorData = await response.text(); // Get error details from response
-        console.error('Error response:', errorData); // Log the error response
-        throw new Error('Failed to add tag'); // Use a generic error message
+        const error = await response.text();
+        toast.error(`Failed to add tag: ${error}`);
+        return;
       }
 
-      const updatedTransaction = await response.json();
-      setTransactions(prev => 
-        prev.map(t => t.id === transactionId ? updatedTransaction : t)
+      const newTag = await response.json();
+
+      // Add the new tag to the transaction
+      setTransactions((prev) =>
+        prev.map((transaction) =>
+          transaction.id === transactionId
+            ? { ...transaction, tags: [...transaction.tags, newTag] }
+            : transaction
+        )
       );
-      toast.success('Tag added');
-    } catch (error: unknown) {
-      console.error('Failed to add tag:', error);
-      toast.error('Failed to add tag');
+
+      // Update the existing tags list
+      setExistingTags((prev) => [...new Set([...prev, newTag.name])]);
+      toast.success("Tag added successfully");
+      setNewTag(""); // Clear input
+      setShowTagPopup(false); // Close popover
+    } catch (error) {
+      console.error("Error adding tag:", error);
+      toast.error("Error adding tag");
     }
   };
 
@@ -180,23 +213,34 @@ export function TransactionsTable() {
     try {
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment })
-      })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ comment }),
+      });
 
-      if (!response.ok) throw new Error('Failed to update comment')
+      if (!response.ok) {
+        throw new Error('Failed to update comment');
+      }
 
-      const updatedTransaction = await response.json()
+      const updatedTransaction = await response.json();
       setTransactions(prev => 
-        prev.map(t => t.id === transactionId ? updatedTransaction : t)
-      )
-      setShowComment(prev => ({ ...prev, [transactionId]: comment }))
-      toast.success('Comment updated')
-    } catch (error: unknown) {
-      console.error('Failed to update comment:', error)
-      toast.error('Failed to update comment')
+        prev.map(t => (t.id === transactionId ? updatedTransaction : t))
+      );
+      toast.success('Comment updated successfully');
+    } catch (error) {
+      console.error('Failed to update comment:', error);
+      toast.error('Failed to update comment');
     }
-  }
+  };
+
+  const handleAddTagFromTextArea = (transactionId: string) => {
+    if (newTag.trim()) { // Check if the newTag is not empty
+      handleAddTag(transactionId, newTag.trim()); // Add the new tag
+      setNewTag(''); // Clear the input after adding
+      setShowTagPopup(false); // Close the popup
+    }
+  };
 
   if (loading) return <div>Loading transactions...</div>
 
@@ -295,103 +339,107 @@ export function TransactionsTable() {
                 </TableHeader>
                 <TableBody>
                   {filteredTransactions.map((transaction) => {
-                    const account = accounts.find(a => a.id === transaction.accountId)
+                    const account = accounts.find(a => a.id === transaction.accountId);
+
+                    // Render tags directly without useMemo
+                    const renderedTags = transaction.tags?.map(tag => (
+                      <Badge key={tag.id} variant="secondary" className={`rounded-md bg-${getRandomColor()}-600`}>
+                        #{tag.name}
+                      </Badge>
+                    ));
+
                     return (
                       <TableRow key={transaction.id}>
                         <TableCell>{format(new Date(transaction.date), 'MMM d, yyyy')}</TableCell>
                         <TableCell>{account?.name}</TableCell>
                         <TableCell>{transaction.description}</TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger className={cn(
-                              "text-sm font-medium",
-                              transaction.category === 'Income' && "text-green-600",
-                              transaction.category === 'Expense' && "text-red-600",
-                              transaction.category === 'Asset' && "text-blue-600",
-                              transaction.category === 'Liability' && "text-orange-600"
-                            )}>
-                              {transaction.category || 'Uncategorized'}
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              {CATEGORIES.map((category) => (
-                                <DropdownMenuItem
-                                  key={category}
-                                  onClick={() => handleCategoryChange(transaction.id, category)}
-                                >
-                                  {category}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                        <TableCell>
                           <div className="flex gap-2 flex-wrap">
-                            {transaction.tags?.map(tag => (
-                              <Badge key={tag.id} variant="secondary">
-                                {tag.name}
-                              </Badge>
-                            ))}
+                            {renderedTags}
                             <Popover>
                               <PopoverTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  {selectedTags[transaction.id] || (transaction.tags?.length > 0 ? transaction.tags[0].name : <TagIcon className="h-4 w-4" />)} 
-                                  {/* Show the selected tag or the first tag, or the tag icon if none */}
+                                <Button variant="ghost" size="sm" onClick={() => setShowTagPopup(true)}>
+                                  <TagIcon className="h-4 w-4" />
                                 </Button>
                               </PopoverTrigger>
-                              <PopoverContent className="w-[200px] p-0">
-                                <Command>
-                                  <CommandInput 
-                                    placeholder="Search or add tag..." 
-                                    onValueChange={setNewTag}
+                              <PopoverContent className="w-[300px] p-4">
+                                <div>
+                                  <Textarea
+                                    placeholder="Type your tag here..."
+                                    value={newTag}
+                                    onChange={(e) => setNewTag(e.target.value)}
+                                    className="mb-4"
                                   />
-                                  <CommandGroup>
-                                    {RANDOM_TAGS.map(tag => (
-                                      <CommandItem
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleAddTagFromTextArea(transaction.id)}
+                                  >
+                                    Add Tag
+                                  </Button>
+                                </div>
+                                <div className="mt-4">
+                                  <h4 className="text-sm font-medium">Existing Tags:</h4>
+                                  <div className="flex gap-2 flex-wrap mt-2">
+                                    {existingTags.map((tag) => (
+                                      <Badge
                                         key={tag}
-                                        onSelect={() => {
-                                          handleAddTag(transaction.id, tag); // Add selected tag
-                                          setSelectedTags(prev => ({ ...prev, [transaction.id]: tag })); // Update the displayed tag for this transaction
-                                        }}
+                                        variant="secondary"
+                                        onClick={() => handleAddTag(transaction.id, tag)}
+                                        className="cursor-pointer"
                                       >
-                                        {tag}
-                                      </CommandItem>
+                                        #{tag}
+                                      </Badge>
                                     ))}
-                                  </CommandGroup>
-                                </Command>
+                                  </div>
+                                </div>
                               </PopoverContent>
                             </Popover>
                           </div>
                         </TableCell>
                         <TableCell>
+                          {/* Dialog component to handle comment input */}
                           <Dialog open={!!showComment[transaction.id]} onOpenChange={(open) => {
+                            // Reset the comment state when the dialog closes
                             if (!open) {
-                              setShowComment(prev => ({ ...prev, [transaction.id]: '' })); // Reset comment when dialog closes
+                              setShowComment(prev => ({ ...prev, [transaction.id]: '' }));
                             }
                           }}>
+                            {/* Button to trigger the dialog, showing the current comment or an icon */}
                             <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" onClick={() => setShowComment(prev => ({ ...prev, [transaction.id]: transaction.comment || '' }))}>
+                              <Button variant="ghost" size="sm" onClick={() => 
+                                // Set the current comment in state when the button is clicked
+                                setShowComment(prev => ({ ...prev, [transaction.id]: transaction.comment || '' }))
+                              }>
                                 {transaction.comment ? (
-                                  <span>{transaction.comment}</span> // Show the comment text
+                                  <span>{transaction.comment}</span> // Display the comment text
                                 ) : (
-                                  <MessageSquare className="h-4 w-4" />
+                                  <MessageSquare className="h-4 w-4" /> // Display the comment icon if no comment exists
                                 )}
                               </Button>
                             </DialogTrigger>
+                            
+                            {/* Content of the dialog for adding or updating comments */}
                             <DialogContent>
                               <DialogHeader>
-                                <DialogTitle>Add Comment</DialogTitle>
+                                <DialogTitle>{transaction.comment ? 'Update Comment' : 'Add Comment'}</DialogTitle>
                               </DialogHeader>
                               <Textarea
-                                defaultValue={showComment[transaction.id] || ''}
+                                value={showComment[transaction.id] || ''} // Controlled component for the comment input
+                                onChange={(e) => 
+                                  // Update the state with the new comment text
+                                  setShowComment(prev => ({ ...prev, [transaction.id]: e.target.value }))
+                                }
                                 placeholder="Add a comment..."
                               />
                               <Button 
                                 variant="default" 
                                 onClick={async () => {
-                                  const commentText = showComment[transaction.id] || '';
-                                  await handleUpdateComment(transaction.id, commentText); // Wait for the comment to be updated
-                                  setShowComment(prev => ({ ...prev, [transaction.id]: commentText })); // Update the comment state
-                                  // Close the dialog
+                                  const commentText = showComment[transaction.id] || ''; // Get the current comment text
+                                  await handleUpdateComment(transaction.id, commentText); // Call the function to update the comment
+                                  setShowComment(prev => ({ ...prev, [transaction.id]: commentText })); // Update the local state with the new comment
+                                  // Close the dialog and reset the comment state
+                                  setShowComment(prev => ({ ...prev, [transaction.id]: '' }));
                                 }}
                               >
                                 Submit Comment
@@ -406,8 +454,8 @@ export function TransactionsTable() {
                           {transaction.amount.toLocaleString()}
                         </TableCell>
                       </TableRow>
-                    )}
-                  )}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
