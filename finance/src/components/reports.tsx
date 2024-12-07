@@ -1,3 +1,6 @@
+"use client";
+
+
 import { useState } from "react";
 import {
   Card,
@@ -9,10 +12,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { addDays, format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { DateRange } from "react-day-picker";
+
+interface ReportItem {
+  month?: string;
+  account_name?: string;
+  total_income: number;
+  total_expense: number;
+}
 
 export function Reports() {
   const [groupBy, setGroupBy] = useState<"month" | "account" | null>(null);
-  const [dateRange, setDateRange] = useState({
+  const [dateRange, setDateRange] = useState<DateRange>({
     from: addDays(new Date(), -30),
     to: new Date(),
   });
@@ -21,8 +32,8 @@ export function Reports() {
     queryKey: ["reports", groupBy, dateRange],
     queryFn: async () => {
       const params = new URLSearchParams({
-        startDate: format(dateRange.from, "yyyy-MM-dd"),
-        endDate: format(dateRange.to, "yyyy-MM-dd"),
+        startDate: dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        endDate: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
         ...(groupBy && { groupBy }),
       });
       const response = await fetch(`/api/reports?${params}`);
@@ -58,12 +69,12 @@ export function Reports() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {groupBy ? (
-            Array.isArray(reportData) && reportData.map((item: any, index: number) => (
+            Array.isArray(reportData) && reportData.map((item: ReportItem, index: number) => (
               <Card key={index}>
                 <CardHeader>
                   <CardTitle>
                     {groupBy === "month"
-                      ? format(new Date(item.month), "MMMM yyyy")
+                      ? item.month ? format(new Date(item.month), "MMMM yyyy") : ""
                       : item.account_name}
                   </CardTitle>
                 </CardHeader>

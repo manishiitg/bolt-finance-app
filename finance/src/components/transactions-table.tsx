@@ -120,12 +120,12 @@ export function TransactionsTable() {
 
   const handleCategoryChange = async (transactionId: string, category: TransactionCategory) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/transactions`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ category }),
+        body: JSON.stringify({ id: transactionId, category }),
       })
 
       if (!response.ok) throw new Error('Failed to update category')
@@ -146,10 +146,13 @@ export function TransactionsTable() {
 
   const handleAddTag = async (transactionId: string, tagName: string) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}/tags`, {
+      const response = await fetch(`/api/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tagName })
+        body: JSON.stringify({ 
+          id: transactionId, 
+          tags: { create: [{ name: tagName }] }
+        })
       })
 
       if (!response.ok) throw new Error('Failed to add tag')
@@ -167,10 +170,10 @@ export function TransactionsTable() {
 
   const handleUpdateComment = async (transactionId: string, comment: string) => {
     try {
-      const response = await fetch(`/api/transactions/${transactionId}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/transactions`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment })
+        body: JSON.stringify({ id: transactionId, comment })
       })
 
       if (!response.ok) throw new Error('Failed to update comment')
